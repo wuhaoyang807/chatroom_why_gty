@@ -413,12 +413,12 @@ if __name__ == '__main__':
     pserver.start()
     while True:
         time.sleep(1)
-        if not cserver.isAlive():
+        if not cserver.is_alive():
             print("Chat connection lost...")
             sys.exit(0)
-        if not fserver.isAlive():
+        if not fserver.is_alive():
             print("File connection lost...")
             sys.exit(0)
-        if not pserver.isAlive():
+        if not pserver.is_alive():
             print("Picture connection lost...")
             sys.exit(0)
