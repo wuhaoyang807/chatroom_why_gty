@@ -11,6 +11,7 @@ import vachat
 import os
 import hashlib
 from time import sleep
+from PIL import Image, ImageTk, ImageSequence
 from PIL import ImageGrab
 from netifaces import interfaces, ifaddresses, AF_INET6
 
@@ -35,6 +36,18 @@ p3 = None
 p4 = None
 dic = {}
 ee = 0
+
+# GIF表情功能初始化
+g1 = ''
+g2 = ''
+g3 = ''
+g4 = ''
+gp1 = None
+gp2 = None
+gp3 = None
+gp4 = None
+gdic = {}
+ge = 0
 
 # 视频聊天初始化
 IsOpen = False  # 判断视频/音频的服务器是否已打开
@@ -223,20 +236,36 @@ def setup_chat_window():
     # 确保窗口处于活动状态
     root.update()
 
+    # 启动GIF动画更新
+    root.after(100, update_gifs)
+
     # 开始接收消息的线程
     r = threading.Thread(target=recv)
     r.start()
 
 
 def setup_chat_ui():
-    global eBut, pBut, sBut, fBut, button1, entry, a, button, vbutton, listbox1, ii
+    global eBut, pBut, sBut, fBut, button1, entry, a, button, vbutton, listbox1, ii, gBut
     global p1, p2, p3, p4, dic, b1, b2, b3, b4, ee
+    global gp1, gp2, gp3, gp4, gdic, g1, g2, g3, g4, ge
+    global gif_frames, gif_labels, last_gif_id  # 添加新的全局变量
 
     # 表情功能代码部分
     b1 = ''
     b2 = ''
     b3 = ''
     b4 = ''
+
+    # GIF表情功能部分
+    g1 = ''
+    g2 = ''
+    g3 = ''
+    g4 = ''
+
+    # 初始化GIF动画相关变量
+    gif_frames = {}  # 用于存储GIF的帧序列
+    gif_labels = {}  # 用于存储显示GIF的标签
+    last_gif_id = 0  # 用于生成唯一的GIF ID
 
     # 将图片打开存入变量中
     try:
@@ -246,6 +275,28 @@ def setup_chat_ui():
         p4 = tkinter.PhotoImage(file='./emoji/smart.png')
         # 用字典将标记与表情图片一一对应, 用于后面接收标记判断表情贴图
         dic = {'aa**': p1, 'bb**': p2, 'cc**': p3, 'dd**': p4}
+
+        # 将GIF动图打开并调整大小后存入变量中
+        # 使用PIL库加载GIF并调整大小
+        gif1 = resize_gif('./emoji/gif1.gif', (50, 50))
+        gif2 = resize_gif('./emoji/gif2.gif', (50, 50))
+        gif3 = resize_gif('./emoji/gif3.gif', (50, 50))
+        gif4 = resize_gif('./emoji/gif4.gif', (50, 50))
+
+        # 获取第一帧作为按钮显示用
+        gp1 = ImageTk.PhotoImage(gif1[0])
+        gp2 = ImageTk.PhotoImage(gif2[0])
+        gp3 = ImageTk.PhotoImage(gif3[0])
+        gp4 = ImageTk.PhotoImage(gif4[0])
+
+        # 存储完整的帧序列，用于动画显示
+        gif_frames['gg1**'] = gif1
+        gif_frames['gg2**'] = gif2
+        gif_frames['gg3**'] = gif3
+        gif_frames['gg4**'] = gif4
+
+        # 用字典将标记与GIF动图一一对应（仅用于按钮显示，实际动画使用gif_frames）
+        gdic = {'gg1**': gp1, 'gg2**': gp2, 'gg3**': gp3, 'gg4**': gp4}
     except Exception as e:
         print(f"Error loading emoji images: {e}")
         # 创建空图片以避免错误
@@ -255,11 +306,24 @@ def setup_chat_ui():
         p4 = tkinter.PhotoImage(width=1, height=1)
         dic = {'aa**': p1, 'bb**': p2, 'cc**': p3, 'dd**': p4}
 
+        # 同样为GIF创建空图片
+        gp1 = tkinter.PhotoImage(width=1, height=1)
+        gp2 = tkinter.PhotoImage(width=1, height=1)
+        gp3 = tkinter.PhotoImage(width=1, height=1)
+        gp4 = tkinter.PhotoImage(width=1, height=1)
+        gdic = {'gg1**': gp1, 'gg2**': gp2, 'gg3**': gp3, 'gg4**': gp4}
+        gif_frames = {'gg1**': [], 'gg2**': [], 'gg3**': [], 'gg4**': []}
+
     ee = 0  # 判断表情面板开关的标志
+    ge = 0  # 判断GIF面板开关的标志
 
     # 创建表情按钮
     eBut = tkinter.Button(root, text='emoji', command=express)
     eBut.place(x=5, y=320, width=60, height=30)
+
+    # 创建GIF表情按钮
+    gBut = tkinter.Button(root, text='GIF', command=gif_express)
+    gBut.place(x=305, y=320, width=60, height=30)
 
     # 创建发送图片按钮
     pBut = tkinter.Button(root, text='Image', command=picture)
@@ -316,10 +380,23 @@ p4 = None
 dic = {}
 ee = 0  # 判断表情面板开关的标志
 
+# GIF表情功能代码部分
+# 四个按钮, 使用全局变量, 方便创建和销毁
+g1 = ''
+g2 = ''
+g3 = ''
+g4 = ''
+# 将GIF图片打开存入变量中
+gp1 = None
+gp2 = None
+gp3 = None
+gp4 = None
+# 用字典将标记与GIF表情图片一一对应
+gdic = {}
+ge = 0  # 判断GIF表情面板开关的标志
+
 
 # 发送表情图标记的函数, 在按钮点击事件中调用
-
-
 def mark(exp):  # 参数是发的表情图标记, 发送后将按钮销毁
     global ee
     mes = exp + ':;' + user + ':;' + chat
@@ -329,6 +406,35 @@ def mark(exp):  # 参数是发的表情图标记, 发送后将按钮销毁
     b3.destroy()
     b4.destroy()
     ee = 0
+
+
+# GIF表情发送函数
+def gmark(exp):  # 参数是发的GIF表情图标记, 发送后将按钮销毁
+    global ge
+    mes = exp + ':;' + user + ':;' + chat
+    s.send(mes.encode())
+    g1.destroy()
+    g2.destroy()
+    g3.destroy()
+    g4.destroy()
+    ge = 0
+
+
+# 四个对应的GIF按钮函数
+def gg1():
+    gmark('gg1**')
+
+
+def gg2():
+    gmark('gg2**')
+
+
+def gg3():
+    gmark('gg3**')
+
+
+def gg4():
+    gmark('gg4**')
 
 
 # 四个对应的函数
@@ -349,7 +455,15 @@ def bb4():
 
 
 def express():
-    global b1, b2, b3, b4, ee
+    global b1, b2, b3, b4, ee, g1, g2, g3, g4, ge
+    # 如果GIF面板是打开的，先关闭它
+    if ge == 1:
+        ge = 0
+        g1.destroy()
+        g2.destroy()
+        g3.destroy()
+        g4.destroy()
+
     if ee == 0:
         ee = 1
         b1 = tkinter.Button(root, command=bb1, image=p1,
@@ -371,6 +485,39 @@ def express():
         b2.destroy()
         b3.destroy()
         b4.destroy()
+
+
+def gif_express():
+    global g1, g2, g3, g4, ge, b1, b2, b3, b4, ee
+    # 如果普通表情面板是打开的，先关闭它
+    if ee == 1:
+        ee = 0
+        b1.destroy()
+        b2.destroy()
+        b3.destroy()
+        b4.destroy()
+
+    if ge == 0:
+        ge = 1
+        g1 = tkinter.Button(root, command=gg1, image=gp1,
+                            relief=tkinter.FLAT, bd=0)
+        g2 = tkinter.Button(root, command=gg2, image=gp2,
+                            relief=tkinter.FLAT, bd=0)
+        g3 = tkinter.Button(root, command=gg3, image=gp3,
+                            relief=tkinter.FLAT, bd=0)
+        g4 = tkinter.Button(root, command=gg4, image=gp4,
+                            relief=tkinter.FLAT, bd=0)
+
+        g1.place(x=5, y=248)
+        g2.place(x=75, y=248)
+        g3.place(x=145, y=248)
+        g4.place(x=215, y=248)
+    else:
+        ge = 0
+        g1.destroy()
+        g2.destroy()
+        g3.destroy()
+        g4.destroy()
 
 
 # 图片功能代码部分
@@ -454,7 +601,6 @@ class MyCapture:
         self.sel = None
 
         # 鼠标左键按下的位置
-
         def onLeftButtonDown(event):
             self.X.set(event.x)
             self.Y.set(event.y)
@@ -1028,7 +1174,7 @@ listbox1.bind('<ButtonRelease-1>', private)
 
 # 用于时刻接收服务端发送的信息并打印
 def recv():
-    global users
+    global users, gif_frames, gif_labels, last_gif_id
     while True:
         data = s.recv(1024)
         data = data.decode()
@@ -1064,7 +1210,7 @@ def recv():
             pic = markk.split('#')
             # 判断是不是表情
             # 如果字典里有则贴图
-            if (markk in dic) or pic[0] == '``':
+            if (markk in dic) or (markk in gdic) or pic[0] == '``':
                 data4 = '\n' + data2 + '：'  # 例:名字-> \n名字：
                 if data3 == '------Group chat-------':
                     if data2 == user:  # 如果是自己则将则字体变为蓝色
@@ -1076,9 +1222,14 @@ def recv():
                 if pic[0] == '``':
                     # 从服务端下载发送的图片
                     fileGet(pic[1])
-                else:
+                elif markk in dic:
                     # 将表情图贴到聊天框
                     listbox.image_create(tkinter.END, image=dic[markk])
+                elif markk in gdic:
+                    # 创建动画GIF并显示
+                    gif_label = create_animated_gif(markk, (0, 0))
+                    if gif_label:
+                        listbox.window_create(tkinter.END, window=gif_label)
             else:
                 data1 = '\n' + data1
                 if data3 == '------Group chat-------':
@@ -1102,8 +1253,85 @@ def recv():
             listbox.see(tkinter.END)  # 显示在最后
 
 
-r = threading.Thread(target=recv)
-r.start()  # 开始线程接收信息
+# 调整GIF大小的函数
+def resize_gif(path, size):
+    """
+    调整GIF大小，返回所有调整大小后的帧
+    :param path: GIF文件路径
+    :param size: 目标尺寸 (width, height)
+    :return: 调整后的帧列表
+    """
+    frames = []
+    try:
+        img = Image.open(path)
+        # 遍历GIF的所有帧
+        for frame in ImageSequence.Iterator(img):
+            # 复制帧以便修改
+            frame_copy = frame.copy()
+            # 调整帧大小
+            frame_copy = frame_copy.resize(size, Image.LANCZOS)
+            frames.append(frame_copy)
+    except Exception as e:
+        print(f"Error resizing GIF {path}: {e}")
+    return frames
+
+
+# 创建动画GIF的函数
+def create_animated_gif(gif_key, position):
+    """
+    创建一个动画GIF并在指定位置显示
+    :param gif_key: GIF在gif_frames字典中的键
+    :param position: 显示位置 (x, y)
+    """
+    global listbox, gif_labels, last_gif_id, gif_frames
+
+    if gif_key not in gif_frames or not gif_frames[gif_key]:
+        return None
+
+    # 生成唯一ID给这个GIF实例
+    gif_id = f"gif_{last_gif_id}"
+    last_gif_id += 1
+
+    # 创建标签显示GIF
+    label = tkinter.Label(listbox)
+    gif_labels[gif_id] = {
+        'label': label,
+        'frames': gif_frames[gif_key],
+        'current_frame': 0,
+        'is_playing': True
+    }
+
+    # 返回标签引用以便插入到文本框
+    return label
+
+
+# 更新GIF动画的函数
+def update_gifs():
+    """定期更新所有GIF动画的帧"""
+    global gif_labels
+
+    for gif_id, gif_data in list(gif_labels.items()):
+        if gif_data['is_playing']:
+            # 获取下一帧
+            frames = gif_data['frames']
+            current_frame = gif_data['current_frame']
+
+            if frames:  # 确保有帧可以显示
+                # 更新到下一帧
+                next_frame = (current_frame + 1) % len(frames)
+                gif_data['current_frame'] = next_frame
+
+                # 显示新帧
+                try:
+                    frame_image = ImageTk.PhotoImage(frames[next_frame])
+                    gif_data['current_image'] = frame_image  # 保存引用防止垃圾回收
+                    gif_data['label'].config(image=frame_image)
+                except Exception as e:
+                    print(f"Error updating GIF frame: {e}")
+
+    # 每100毫秒更新一次
+    root.after(100, update_gifs)
+
 
 # 将Enter键绑定到登录功能
 root.bind('<Return>', process_login_register)  # 回车绑定登录功能
