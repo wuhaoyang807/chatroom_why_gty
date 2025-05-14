@@ -46,8 +46,8 @@ AudioOpen = True  # 是否打开音频聊天
 # 登陆窗口
 root = tkinter.Tk()
 root.title('Log in')
-root['height'] = 180
-root['width'] = 270
+root['height'] = 200
+root['width'] = 300
 root.resizable(0, 0)  # 限制窗口大小
 
 IP1 = tkinter.StringVar()
@@ -56,8 +56,8 @@ User = tkinter.StringVar()
 User.set('')
 Password = tkinter.StringVar()
 Password.set('')
-LoginMode = tkinter.BooleanVar()
-LoginMode.set(True)  # True for login, False for register
+LoginMode = tkinter.StringVar()
+LoginMode.set('login')  # 'login', 'register', or 'deregister'
 
 # 初始化聊天相关变量
 chat = '------Group chat-------'  # 聊天对象, 默认为群聊
@@ -67,37 +67,47 @@ labelIP = tkinter.Label(root, text='Server address')
 labelIP.place(x=20, y=10, width=100, height=20)
 
 entryIP = tkinter.Entry(root, width=80, textvariable=IP1)
-entryIP.place(x=120, y=10, width=130, height=20)
+entryIP.place(x=120, y=10, width=160, height=20)
 
 # 用户名标签
 labelUser = tkinter.Label(root, text='Username')
-labelUser.place(x=30, y=40, width=80, height=20)
+labelUser.place(x=20, y=40, width=100, height=20)
 
 entryUser = tkinter.Entry(root, width=80, textvariable=User)
-entryUser.place(x=120, y=40, width=130, height=20)
+entryUser.place(x=120, y=40, width=160, height=20)
 
 # 密码标签
 labelPassword = tkinter.Label(root, text='Password')
-labelPassword.place(x=30, y=70, width=80, height=20)
+labelPassword.place(x=20, y=70, width=100, height=20)
 
 entryPassword = tkinter.Entry(root, width=80, textvariable=Password, show='*')
-entryPassword.place(x=120, y=70, width=130, height=20)
+entryPassword.place(x=120, y=70, width=160, height=20)
 
-# 切换登录/注册模式
-def toggle_mode():
-    if LoginMode.get():
-        LoginMode.set(False)
-        modeButton.config(text='Switch to Login')
-        loginButton.config(text='Register')
-        root.title('Register')
-    else:
-        LoginMode.set(True)
-        modeButton.config(text='Switch to Register')
-        loginButton.config(text='Login')
-        root.title('Log in')
+# 设置模式函数
+def set_login_mode():
+    LoginMode.set('login')
+    loginButton.config(text='Login')
+    root.title('Log in')
 
-modeButton = tkinter.Button(root, text='Switch to Register', command=toggle_mode)
-modeButton.place(x=80, y=100, width=120, height=30)
+def set_register_mode():
+    LoginMode.set('register')
+    loginButton.config(text='Register')
+    root.title('Register')
+
+def set_deregister_mode():
+    LoginMode.set('deregister')
+    loginButton.config(text='Deregister')
+    root.title('Deregister')
+
+# 创建模式选择的单选按钮
+login_rb = tkinter.Radiobutton(root, text='Login', variable=LoginMode, value='login', command=set_login_mode)
+login_rb.place(x=30, y=100, width=70, height=30)
+
+register_rb = tkinter.Radiobutton(root, text='Register', variable=LoginMode, value='register', command=set_register_mode)
+register_rb.place(x=110, y=100, width=80, height=30)
+
+deregister_rb = tkinter.Radiobutton(root, text='Deregister', variable=LoginMode, value='deregister', command=set_deregister_mode)
+deregister_rb.place(x=200, y=100, width=80, height=30)
 
 # 登录和注册按钮
 def process_login_register(*args):
@@ -115,8 +125,10 @@ def process_login_register(*args):
         tkinter.messagebox.showerror('Error', message='Password cannot be empty!')
         return
     
-    # 设置是登录还是注册模式
-    is_register = not LoginMode.get()
+    # 设置是登录/注册/注销模式
+    mode = LoginMode.get()
+    is_register = (mode == 'register')
+    is_deregister = (mode == 'deregister')
     
     try:
         # 登录或注册验证
@@ -124,11 +136,12 @@ def process_login_register(*args):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect((IP, PORT))
 
-        # 发送用户名和密码，以及是登录还是注册
+        # 发送用户名和密码，以及是登录、注册还是注销
         auth_data = {
             "username": user,
             "password": hashlib.sha256(password.encode()).hexdigest(),
-            "is_register": is_register
+            "is_register": is_register,
+            "is_deregister": is_deregister
         }
         s.send(json.dumps(auth_data).encode())
 
@@ -136,16 +149,23 @@ def process_login_register(*args):
         auth_result = s.recv(1024).decode()
         if auth_result == "AUTH_FAILED":
             tkinter.messagebox.showerror('Authentication Failed', message='Incorrect password!')
+            s.close()
             return
         elif auth_result == "REGISTER_SUCCESS":
             tkinter.messagebox.showinfo('Success', message='Registration successful! You are now logged in.')
         elif auth_result == "LOGIN_SUCCESS":
             tkinter.messagebox.showinfo('Success', message='Login successful! Welcome back.')
+        elif auth_result == "DEREGISTER_SUCCESS":
+            tkinter.messagebox.showinfo('Success', message='User deregistered successfully!')
+            s.close()
+            return
         elif auth_result == "USER_EXISTS":
             tkinter.messagebox.showerror('Registration Failed', message='User already exists! Please try a different username.')
+            s.close()
             return
         elif auth_result == "USER_NOT_FOUND":
-            tkinter.messagebox.showerror('Login Failed', message='User not found! Please check your username or register.')
+            tkinter.messagebox.showerror('Error', message='User not found! Please check your username or register.')
+            s.close()
             return
 
         # 如果没有用户名则将ip和端口号设置为用户名
@@ -1077,7 +1097,7 @@ r.start()  # 开始线程接收信息
 # 将Enter键绑定到登录功能
 root.bind('<Return>', process_login_register)  # 回车绑定登录功能
 loginButton = tkinter.Button(root, text='Login', command=process_login_register)
-loginButton.place(x=100, y=140, width=70, height=30)
+loginButton.place(x=115, y=150, width=70, height=30)
 
 # 主循环
 root.mainloop()

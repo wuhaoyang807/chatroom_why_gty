@@ -105,8 +105,14 @@ class ChatServer(threading.Thread):
             username = auth_data.get('username', '')
             password_hash = auth_data.get('password', '')
             is_register = auth_data.get('is_register', False)
+            is_deregister = auth_data.get('is_deregister', False)
             
-            if is_register:
+            if is_deregister:
+                success, message = user_auth.deregister_user(username, password_hash)
+                conn.send(message.encode())
+                conn.close()
+                return
+            elif is_register:
                 success, message = user_auth.register_user(username, password_hash)
                 conn.send(message.encode())
                 if not success:

@@ -46,8 +46,8 @@ AudioOpen = True  # 是否打开音频聊天
 # 登陆窗口
 root = tkinter.Tk()
 root.title('Log in')
-root['height'] = 180
-root['width'] = 270
+root['height'] = 200
+root['width'] = 300
 root.resizable(0, 0)  # 限制窗口大小
 
 IP1 = tkinter.StringVar()
@@ -56,8 +56,8 @@ User = tkinter.StringVar()
 User.set('')
 Password = tkinter.StringVar()
 Password.set('')
-LoginMode = tkinter.BooleanVar()
-LoginMode.set(True)  # True for login, False for register
+LoginMode = tkinter.StringVar()
+LoginMode.set('login')  # 'login', 'register', or 'deregister'
 
 # 初始化聊天相关变量
 chat = '------Group chat-------'  # 聊天对象, 默认为群聊
@@ -67,39 +67,53 @@ labelIP = tkinter.Label(root, text='Server address')
 labelIP.place(x=20, y=10, width=100, height=20)
 
 entryIP = tkinter.Entry(root, width=80, textvariable=IP1)
-entryIP.place(x=120, y=10, width=130, height=20)
+entryIP.place(x=120, y=10, width=160, height=20)
 
 # 用户名标签
 labelUser = tkinter.Label(root, text='Username')
-labelUser.place(x=30, y=40, width=80, height=20)
+labelUser.place(x=20, y=40, width=100, height=20)
 
 entryUser = tkinter.Entry(root, width=80, textvariable=User)
-entryUser.place(x=120, y=40, width=130, height=20)
+entryUser.place(x=120, y=40, width=160, height=20)
 
 # 密码标签
 labelPassword = tkinter.Label(root, text='Password')
-labelPassword.place(x=30, y=70, width=80, height=20)
+labelPassword.place(x=20, y=70, width=100, height=20)
 
 entryPassword = tkinter.Entry(root, width=80, textvariable=Password, show='*')
-entryPassword.place(x=120, y=70, width=130, height=20)
+entryPassword.place(x=120, y=70, width=160, height=20)
 
 
-# 切换登录/注册模式
-def toggle_mode():
-    if LoginMode.get():
-        LoginMode.set(False)
-        modeButton.config(text='Switch to Login')
-        loginButton.config(text='Register')
-        root.title('Register')
-    else:
-        LoginMode.set(True)
-        modeButton.config(text='Switch to Register')
-        loginButton.config(text='Login')
-        root.title('Log in')
+# 设置模式函数
+def set_login_mode():
+    LoginMode.set('login')
+    loginButton.config(text='Login')
+    root.title('Log in')
 
 
-modeButton = tkinter.Button(root, text='Switch to Register', command=toggle_mode)
-modeButton.place(x=80, y=100, width=120, height=30)
+def set_register_mode():
+    LoginMode.set('register')
+    loginButton.config(text='Register')
+    root.title('Register')
+
+
+def set_deregister_mode():
+    LoginMode.set('deregister')
+    loginButton.config(text='Deregister')
+    root.title('Deregister')
+
+
+# 创建模式选择的单选按钮
+login_rb = tkinter.Radiobutton(root, text='Login', variable=LoginMode, value='login', command=set_login_mode)
+login_rb.place(x=30, y=100, width=70, height=30)
+
+register_rb = tkinter.Radiobutton(root, text='Register', variable=LoginMode, value='register',
+                                  command=set_register_mode)
+register_rb.place(x=110, y=100, width=80, height=30)
+
+deregister_rb = tkinter.Radiobutton(root, text='Deregister', variable=LoginMode, value='deregister',
+                                    command=set_deregister_mode)
+deregister_rb.place(x=200, y=100, width=80, height=30)
 
 
 # 登录和注册按钮
@@ -118,8 +132,10 @@ def process_login_register(*args):
         tkinter.messagebox.showerror('Error', message='Password cannot be empty!')
         return
 
-    # 设置是登录还是注册模式
-    is_register = not LoginMode.get()
+    # 设置是登录/注册/注销模式
+    mode = LoginMode.get()
+    is_register = (mode == 'register')
+    is_deregister = (mode == 'deregister')
 
     try:
         # 登录或注册验证
@@ -127,11 +143,12 @@ def process_login_register(*args):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect((IP, PORT))
 
-        # 发送用户名和密码，以及是登录还是注册
+        # 发送用户名和密码，以及是登录、注册还是注销
         auth_data = {
             "username": user,
             "password": hashlib.sha256(password.encode()).hexdigest(),
-            "is_register": is_register
+            "is_register": is_register,
+            "is_deregister": is_deregister
         }
         s.send(json.dumps(auth_data).encode())
 
@@ -139,18 +156,24 @@ def process_login_register(*args):
         auth_result = s.recv(1024).decode()
         if auth_result == "AUTH_FAILED":
             tkinter.messagebox.showerror('Authentication Failed', message='Incorrect password!')
+            s.close()
             return
         elif auth_result == "REGISTER_SUCCESS":
             tkinter.messagebox.showinfo('Success', message='Registration successful! You are now logged in.')
         elif auth_result == "LOGIN_SUCCESS":
             tkinter.messagebox.showinfo('Success', message='Login successful! Welcome back.')
+        elif auth_result == "DEREGISTER_SUCCESS":
+            tkinter.messagebox.showinfo('Success', message='User deregistered successfully!')
+            s.close()
+            return
         elif auth_result == "USER_EXISTS":
             tkinter.messagebox.showerror('Registration Failed',
                                          message='User already exists! Please try a different username.')
+            s.close()
             return
         elif auth_result == "USER_NOT_FOUND":
-            tkinter.messagebox.showerror('Login Failed',
-                                         message='User not found! Please check your username or register.')
+            tkinter.messagebox.showerror('Error', message='User not found! Please check your username or register.')
+            s.close()
             return
 
         # 如果没有用户名则将ip和端口号设置为用户名
@@ -520,34 +543,57 @@ def fileClient():
 
     # 将接收到的目录文件列表打印出来(dir), 显示在列表框中, 在pwd函数中调用
     def recvList(enter, lu):
-        s.send(enter.encode())
-        data = s.recv(4096)
-        data = json.loads(data.decode())
-        list2.delete(0, tkinter.END)  # 清空列表框
-        lu = lu.split('\\')
-        if len(lu) != 1:
-            list2.insert(tkinter.END, 'Return to the previous dir')
-            list2.itemconfig(0, fg='green')
-        for i in range(len(data)):
-            list2.insert(tkinter.END, ('' + data[i]))
-            if '.' not in data[i]:
-                list2.itemconfig(tkinter.END, fg='orange')
-            else:
-                list2.itemconfig(tkinter.END, fg='blue')
+        try:
+            s.settimeout(5.0)  # 设置5秒超时
+            s.send(enter.encode())
+            data = s.recv(4096)
+            data = json.loads(data.decode())
+            list2.delete(0, tkinter.END)  # 清空列表框
+            lu = lu.split('\\')
+            if len(lu) != 1:
+                list2.insert(tkinter.END, 'Return to the previous dir')
+                list2.itemconfig(0, fg='green')
+            for i in range(len(data)):
+                list2.insert(tkinter.END, ('' + data[i]))
+                if '.' not in data[i]:
+                    list2.itemconfig(tkinter.END, fg='orange')
+                else:
+                    list2.itemconfig(tkinter.END, fg='blue')
+        except Exception as e:
+            print(f"Error in recvList: {e}")
+            list2.delete(0, tkinter.END)
+            list2.insert(tkinter.END, "Error loading directory")
+        finally:
+            s.settimeout(None)  # 恢复默认设置
 
     # 创建标签显示服务端工作目录
     def lab():
         global label
-        data = s.recv(1024)  # 接收目录
-        lu = data.decode()
         try:
-            label.destroy()
-            label = tkinter.Label(root, text=lu)
-            label.place(x=580, y=0, )
-        except:
-            label = tkinter.Label(root, text=lu)
-            label.place(x=580, y=0, )
-        recvList('dir', lu)
+            s.settimeout(5.0)  # 设置5秒超时
+            data = s.recv(1024)  # 接收目录
+            lu = data.decode()
+            try:
+                label.destroy()
+                label = tkinter.Label(root, text=lu)
+                label.place(x=580, y=0, )
+            except:
+                label = tkinter.Label(root, text=lu)
+                label.place(x=580, y=0, )
+            recvList('dir', lu)
+        except socket.timeout:
+            print("Timeout waiting for directory information")
+            try:
+                label.destroy()
+                label = tkinter.Label(root, text="Connection timeout")
+                label.place(x=580, y=0, )
+            except:
+                label = tkinter.Label(root, text="Connection timeout")
+                label.place(x=580, y=0, )
+        except Exception as e:
+            print(f"Error in lab: {e}")
+        finally:
+            s.settimeout(None)  # 恢复默认设置
 
     # 进入指定目录(cd)
     def cd(message):
@@ -567,33 +613,104 @@ def fileClient():
         fileName = tkinter.filedialog.asksaveasfilename(title='Save file to', initialfile=name)
         # 如果文件名非空才进行下载
         if fileName:
-            s.send(message.encode())
-            with open(fileName, 'wb') as f:
-                while True:
-                    data = s.recv(1024)
-                    if data == 'EOF'.encode():
+            # 创建进度窗口
+            progress_window = tkinter.Toplevel(root)
+            progress_window.title('Downloading')
+            progress_window.geometry('300x100')
+
+            # 添加进度标签
+            progress_label = tkinter.Label(progress_window, text=f"Downloading {name}...")
+            progress_label.pack(pady=10)
+
+            # 添加取消按钮
+            cancel_download = False
+
+            def on_cancel():
+                nonlocal cancel_download
+                cancel_download = True
+                progress_window.destroy()
+
+            cancel_button = tkinter.Button(progress_window, text="Cancel", command=on_cancel)
+            cancel_button.pack(pady=10)
+
+            # 开始下载文件的线程
+            def download_thread():
+                try:
+                    # 设置超时
+                    s.settimeout(10.0)
+                    s.send(message.encode())
+
+                    with open(fileName, 'wb') as f:
+                        while True and not cancel_download:
+                            try:
+                                data = s.recv(1024)
+                                if data == 'EOF'.encode():
+                                    break
+                                if not data:  # 连接中断
+                                    raise Exception("Connection lost")
+                                f.write(data)
+                                # 更新进度标签
+                                progress_window.update_idletasks()
+                            except socket.timeout:
+                                if not cancel_download:
+                                    tkinter.messagebox.showerror(title='Error',
+                                                                 message='Download timed out!')
+                                break
+
+                    # 完成下载，关闭进度窗口
+                    if not cancel_download:
+                        progress_window.destroy()
                         tkinter.messagebox.showinfo(title='Message',
                                                     message='Download completed!')
-                        break
-                    f.write(data)
+                except Exception as e:
+                    if not cancel_download:
+                        progress_window.destroy()
+                        tkinter.messagebox.showerror(title='Error',
+                                                     message=f'Download failed: {str(e)}')
+                finally:
+                    s.settimeout(None)  # 恢复默认超时设置
+
+            # 启动下载线程
+            download_thread = threading.Thread(target=download_thread)
+            download_thread.daemon = True
+            download_thread.start()
+
+            # 等待进度窗口关闭
+            root.wait_window(progress_window)
 
     # 创建用于绑定在列表框上的函数
     def run(*args):
-        indexs = list2.curselection()
-        index = indexs[0]
-        content = list2.get(index)
-        # 如果有一个 . 则为文件
-        if '.' in content:
-            content = 'get ' + content
-            get(content)
-            cd('cd same')
-        elif content == 'Return to the previous dir':
-            content = 'cd ..'
-            cd(content)
-        else:
-            content = 'cd ' + content
-            cd(content)
-        lab()  # 刷新显示页面
+        try:
+            indexs = list2.curselection()
+            index = indexs[0]
+            content = list2.get(index)
+
+            # 创建处理操作的线程函数
+            def process_action():
+                try:
+                    # 如果有一个 . 则为文件
+                    if '.' in content:
+                        content_command = 'get ' + content
+                        get(content_command)
+                        cd('cd same')
+                    elif content == 'Return to the previous dir':
+                        content_command = 'cd ..'
+                        cd(content_command)
+                    else:
+                        content_command = 'cd ' + content
+                        cd(content_command)
+                    lab()  # 刷新显示页面
+                except Exception as e:
+                    print(f"Error in process_action: {e}")
+
+            # 使用线程执行可能阻塞的操作
+            action_thread = threading.Thread(target=process_action)
+            action_thread.daemon = True
+            action_thread.start()
+
+        except Exception as e:
+            print(f"Error in run: {e}")
+            # 可能没有选中项目等异常情况
 
     # 在列表框上设置绑定事件
     list2.bind('<ButtonRelease-1>', run)
@@ -617,8 +734,24 @@ def fileClient():
                 s.send('EOF'.encode())
                 tkinter.messagebox.showinfo(title='Message',
                                             message='Upload completed!')
-        cd('cd same')
-        lab()  # 上传成功后刷新显示页面
+
+            # 使用线程来刷新文件列表，避免阻塞主线程
+            def refresh_filelist():
+                try:
+                    # 设置超时，防止长时间阻塞
+                    s.settimeout(5.0)
+                    cd('cd same')
+                    lab()  # 上传成功后刷新显示页面
+                except Exception as e:
+                    print(f"Error refreshing file list: {e}")
+                finally:
+                    # 恢复默认超时设置
+                    s.settimeout(None)
+
+            # 创建并启动线程
+            refresh_thread = threading.Thread(target=refresh_filelist)
+            refresh_thread.daemon = True  # 设为守护线程，随主线程退出
+            refresh_thread.start()
 
     # 创建上传按钮, 并绑定上传文件功能
     upload = tkinter.Button(root, text='Upload file', command=put)
@@ -975,7 +1108,7 @@ r.start()  # 开始线程接收信息
 # 将Enter键绑定到登录功能
 root.bind('<Return>', process_login_register)  # 回车绑定登录功能
 loginButton = tkinter.Button(root, text='Login', command=process_login_register)
-loginButton.place(x=100, y=140, width=70, height=30)
+loginButton.place(x=115, y=150, width=70, height=30)
 
 # 主循环
 root.mainloop()

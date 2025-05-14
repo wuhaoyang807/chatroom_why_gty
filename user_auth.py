@@ -48,4 +48,30 @@ class UserAuth:
                 elif row[0] == username:
                     return False, "AUTH_FAILED"
         
-        return False, "AUTH_FAILED" 
+        return False, "AUTH_FAILED"
+    
+    def deregister_user(self, username, password_hash):
+        """Remove a user from the CSV file after verifying credentials"""
+        if not self.user_exists(username):
+            return False, "USER_NOT_FOUND"
+        
+        # First verify the credentials
+        is_valid, message = self.verify_user(username, password_hash)
+        if not is_valid:
+            return False, "AUTH_FAILED"
+        
+        # If credentials are valid, remove the user
+        rows = []
+        with open(self.csv_file, 'r', newline='') as f:
+            reader = csv.reader(f)
+            rows.append(next(reader))  # Keep header row
+            for row in reader:
+                if row[0] != username:  # Keep all rows except the user to deregister
+                    rows.append(row)
+        
+        # Write back all rows except the deregistered user
+        with open(self.csv_file, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerows(rows)
+        
+        return True, "DEREGISTER_SUCCESS" 
