@@ -24,12 +24,31 @@ users = []  # 在线用户列表
 chat = '------Group chat-------'  # 聊天对象, 默认为群聊
 is_register = False  # 标识是注册还是登录
 
+# 表情功能初始化
+b1 = ''
+b2 = ''
+b3 = ''
+b4 = ''
+p1 = None
+p2 = None
+p3 = None
+p4 = None
+dic = {}
+ee = 0
+
+# 视频聊天初始化
+IsOpen = False    # 判断视频/音频的服务器是否已打开
+Resolution = 0    # 图像传输的分辨率 0-4依次递减
+Version = 4       # 传输协议版本 IPv4/IPv6
+ShowMe = True     # 视频聊天时是否打开本地摄像头
+AudioOpen = True  # 是否打开音频聊天
+
 # 登陆窗口
-root1 = tkinter.Tk()
-root1.title('Log in')
-root1['height'] = 180
-root1['width'] = 270
-root1.resizable(0, 0)  # 限制窗口大小
+root = tkinter.Tk()
+root.title('Log in')
+root['height'] = 180
+root['width'] = 270
+root.resizable(0, 0)  # 限制窗口大小
 
 IP1 = tkinter.StringVar()
 IP1.set('127.0.0.1:50007')  # 默认显示的ip和端口
@@ -40,25 +59,28 @@ Password.set('')
 LoginMode = tkinter.BooleanVar()
 LoginMode.set(True)  # True for login, False for register
 
+# 初始化聊天相关变量
+chat = '------Group chat-------'  # 聊天对象, 默认为群聊
+
 # 服务器标签
-labelIP = tkinter.Label(root1, text='Server address')
+labelIP = tkinter.Label(root, text='Server address')
 labelIP.place(x=20, y=10, width=100, height=20)
 
-entryIP = tkinter.Entry(root1, width=80, textvariable=IP1)
+entryIP = tkinter.Entry(root, width=80, textvariable=IP1)
 entryIP.place(x=120, y=10, width=130, height=20)
 
 # 用户名标签
-labelUser = tkinter.Label(root1, text='Username')
+labelUser = tkinter.Label(root, text='Username')
 labelUser.place(x=30, y=40, width=80, height=20)
 
-entryUser = tkinter.Entry(root1, width=80, textvariable=User)
+entryUser = tkinter.Entry(root, width=80, textvariable=User)
 entryUser.place(x=120, y=40, width=130, height=20)
 
 # 密码标签
-labelPassword = tkinter.Label(root1, text='Password')
+labelPassword = tkinter.Label(root, text='Password')
 labelPassword.place(x=30, y=70, width=80, height=20)
 
-entryPassword = tkinter.Entry(root1, width=80, textvariable=Password, show='*')
+entryPassword = tkinter.Entry(root, width=80, textvariable=Password, show='*')
 entryPassword.place(x=120, y=70, width=130, height=20)
 
 # 切换登录/注册模式
@@ -67,14 +89,14 @@ def toggle_mode():
         LoginMode.set(False)
         modeButton.config(text='Switch to Login')
         loginButton.config(text='Register')
-        root1.title('Register')
+        root.title('Register')
     else:
         LoginMode.set(True)
         modeButton.config(text='Switch to Register')
         loginButton.config(text='Login')
-        root1.title('Log in')
+        root.title('Log in')
 
-modeButton = tkinter.Button(root1, text='Switch to Register', command=toggle_mode)
+modeButton = tkinter.Button(root, text='Switch to Register', command=toggle_mode)
 modeButton.place(x=80, y=100, width=120, height=30)
 
 # 登录和注册按钮
@@ -95,66 +117,158 @@ def process_login_register(*args):
     
     # 设置是登录还是注册模式
     is_register = not LoginMode.get()
+    
+    try:
+        # 登录或注册验证
+        global s
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((IP, PORT))
+
+        # 发送用户名和密码，以及是登录还是注册
+        auth_data = {
+            "username": user,
+            "password": hashlib.sha256(password.encode()).hexdigest(),
+            "is_register": is_register
+        }
+        s.send(json.dumps(auth_data).encode())
+
+        # 接收服务器验证结果
+        auth_result = s.recv(1024).decode()
+        if auth_result == "AUTH_FAILED":
+            tkinter.messagebox.showerror('Authentication Failed', message='Incorrect password!')
+            return
+        elif auth_result == "REGISTER_SUCCESS":
+            tkinter.messagebox.showinfo('Success', message='Registration successful! You are now logged in.')
+        elif auth_result == "LOGIN_SUCCESS":
+            tkinter.messagebox.showinfo('Success', message='Login successful! Welcome back.')
+        elif auth_result == "USER_EXISTS":
+            tkinter.messagebox.showerror('Registration Failed', message='User already exists! Please try a different username.')
+            return
+        elif auth_result == "USER_NOT_FOUND":
+            tkinter.messagebox.showerror('Login Failed', message='User not found! Please check your username or register.')
+            return
+
+        # 如果没有用户名则将ip和端口号设置为用户名
+        addr = s.getsockname()  # 获取客户端ip和端口号
+        addr = addr[0] + ':' + str(addr[1])
+        if user == '':
+            user = addr
+            
+        # 登录成功，转换为聊天窗口
+        # 清除登录窗口的所有控件
+        for widget in root.winfo_children():
+            widget.destroy()
         
-    root1.destroy()  # 关闭窗口
+        # 设置聊天窗口
+        setup_chat_window()
+        
+    except Exception as e:
+        tkinter.messagebox.showerror('Connection Error', message=f'Failed to connect to server: {str(e)}')
+        return
 
-root1.bind('<Return>', process_login_register)  # 回车绑定登录功能
-loginButton = tkinter.Button(root1, text='Login', command=process_login_register)
-loginButton.place(x=100, y=140, width=70, height=30)
+def setup_chat_window():
+    global listbox, chat, users
+    # 确保聊天对象已初始化
+    chat = '------Group chat-------'  # 聊天对象, 默认为群聊
+    users = []  # 重置在线用户列表
+    
+    # 设置窗口属性
+    root.title(user)  # 窗口命名为用户名
+    root['height'] = 400
+    root['width'] = 580
+    root.resizable(0, 0)  # 限制窗口大小
+    
+    # 创建多行文本框
+    listbox = ScrolledText(root)
+    listbox.place(x=5, y=0, width=570, height=320)
+    # 文本框使用的字体颜色
+    listbox.tag_config('red', foreground='red')
+    listbox.tag_config('blue', foreground='blue')
+    listbox.tag_config('green', foreground='green')
+    listbox.tag_config('pink', foreground='pink')
+    listbox.insert(tkinter.END, 'Welcome to the chat room!', 'blue')
+    
+    # 这里添加所有聊天窗口的UI元素和功能
+    setup_chat_ui()
+    
+    # 确保窗口处于活动状态
+    root.update()
+    
+    # 开始接收消息的线程
+    r = threading.Thread(target=recv)
+    r.start()
 
-root1.mainloop()
-
-# 登录或注册验证
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect((IP, PORT))
-
-# 发送用户名和密码，以及是登录还是注册
-auth_data = {
-    "username": user,
-    "password": hashlib.sha256(password.encode()).hexdigest(),
-    "is_register": is_register
-}
-s.send(json.dumps(auth_data).encode())
-
-# 接收服务器验证结果
-auth_result = s.recv(1024).decode()
-if auth_result == "AUTH_FAILED":
-    tkinter.messagebox.showerror('Authentication Failed', message='Incorrect password!')
-    exit(0)
-elif auth_result == "REGISTER_SUCCESS":
-    tkinter.messagebox.showinfo('Success', message='Registration successful! You are now logged in.')
-elif auth_result == "LOGIN_SUCCESS":
-    tkinter.messagebox.showinfo('Success', message='Login successful! Welcome back.')
-elif auth_result == "USER_EXISTS":
-    tkinter.messagebox.showerror('Registration Failed', message='User already exists! Please try a different username.')
-    exit(0)
-elif auth_result == "USER_NOT_FOUND":
-    tkinter.messagebox.showerror('Login Failed', message='User not found! Please check your username or register.')
-    exit(0)
-
-# 如果没有用户名则将ip和端口号设置为用户名
-addr = s.getsockname()  # 获取客户端ip和端口号
-addr = addr[0] + ':' + str(addr[1])
-if user == '':
-    user = addr
-
-# 聊天窗口
-# 创建图形界面
-root = tkinter.Tk()
-root.title(user)  # 窗口命名为用户名
-root['height'] = 400
-root['width'] = 580
-root.resizable(0, 0)  # 限制窗口大小
-
-# 创建多行文本框
-listbox = ScrolledText(root)
-listbox.place(x=5, y=0, width=570, height=320)
-# 文本框使用的字体颜色
-listbox.tag_config('red', foreground='red')
-listbox.tag_config('blue', foreground='blue')
-listbox.tag_config('green', foreground='green')
-listbox.tag_config('pink', foreground='pink')
-listbox.insert(tkinter.END, 'Welcome to the chat room!', 'blue')
+def setup_chat_ui():
+    global eBut, pBut, sBut, fBut, button1, entry, a, button, vbutton, listbox1, ii
+    global p1, p2, p3, p4, dic, b1, b2, b3, b4, ee
+    
+    # 表情功能代码部分
+    b1 = ''
+    b2 = ''
+    b3 = ''
+    b4 = ''
+    
+    # 将图片打开存入变量中
+    try:
+        p1 = tkinter.PhotoImage(file='./emoji/facepalm.png')
+        p2 = tkinter.PhotoImage(file='./emoji/smirk.png')
+        p3 = tkinter.PhotoImage(file='./emoji/concerned.png')
+        p4 = tkinter.PhotoImage(file='./emoji/smart.png')
+        # 用字典将标记与表情图片一一对应, 用于后面接收标记判断表情贴图
+        dic = {'aa**': p1, 'bb**': p2, 'cc**': p3, 'dd**': p4}
+    except Exception as e:
+        print(f"Error loading emoji images: {e}")
+        # 创建空图片以避免错误
+        p1 = tkinter.PhotoImage(width=1, height=1)
+        p2 = tkinter.PhotoImage(width=1, height=1)
+        p3 = tkinter.PhotoImage(width=1, height=1)
+        p4 = tkinter.PhotoImage(width=1, height=1)
+        dic = {'aa**': p1, 'bb**': p2, 'cc**': p3, 'dd**': p4}
+    
+    ee = 0  # 判断表情面板开关的标志
+    
+    # 创建表情按钮
+    eBut = tkinter.Button(root, text='emoji', command=express)
+    eBut.place(x=5, y=320, width=60, height=30)
+    
+    # 创建发送图片按钮
+    pBut = tkinter.Button(root, text='Image', command=picture)
+    pBut.place(x=65, y=320, width=60, height=30)
+    
+    # 创建截屏按钮
+    sBut = tkinter.Button(root, text='Capture', command=buttonCaptureClick)
+    sBut.place(x=125, y=320, width=60, height=30)
+    
+    # 创建文件按钮
+    fBut = tkinter.Button(root, text='File', command=fileClient)
+    fBut.place(x=185, y=320, width=60, height=30)
+    
+    # 创建多行文本框, 显示在线用户
+    listbox1 = tkinter.Listbox(root)
+    listbox1.place(x=445, y=0, width=130, height=320)
+    
+    # 查看在线用户按钮
+    ii = 0
+    button1 = tkinter.Button(root, text='Users online', command=users)
+    button1.place(x=485, y=320, width=90, height=30)
+    
+    # 创建输入文本框和关联变量
+    a = tkinter.StringVar()
+    a.set('')
+    entry = tkinter.Entry(root, width=120, textvariable=a)
+    entry.place(x=5, y=350, width=570, height=40)
+    
+    # 创建发送按钮
+    button = tkinter.Button(root, text='Send', command=send)
+    button.place(x=515, y=353, width=60, height=30)
+    root.bind('<Return>', send)  # 绑定回车发送信息
+    
+    # 视频聊天按钮
+    vbutton = tkinter.Button(root, text="Video", command=video_connect_option)
+    vbutton.place(x=245, y=320, width=60, height=30)
+    
+    # 在显示用户列表框上设置绑定事件
+    listbox1.bind('<ButtonRelease-1>', private)
 
 # 表情功能代码部分
 # 四个按钮, 使用全局变量, 方便创建和销毁
@@ -163,12 +277,12 @@ b2 = ''
 b3 = ''
 b4 = ''
 # 将图片打开存入变量中
-p1 = tkinter.PhotoImage(file='./emoji/facepalm.png')
-p2 = tkinter.PhotoImage(file='./emoji/smirk.png')
-p3 = tkinter.PhotoImage(file='./emoji/concerned.png')
-p4 = tkinter.PhotoImage(file='./emoji/smart.png')
+p1 = None
+p2 = None
+p3 = None
+p4 = None
 # 用字典将标记与表情图片一一对应, 用于后面接收标记判断表情贴图
-dic = {'aa**': p1, 'bb**': p2, 'cc**': p3, 'dd**': p4}
+dic = {}
 ee = 0  # 判断表情面板开关的标志
 
 
@@ -226,11 +340,6 @@ def express():
         b2.destroy()
         b3.destroy()
         b4.destroy()
-
-
-# 创建表情按钮
-eBut = tkinter.Button(root, text='emoji', command=express)
-eBut.place(x=5, y=320, width=60, height=30)
 
 
 # 图片功能代码部分
@@ -292,11 +401,6 @@ def picture():
     if fileName:
         # 调用发送图片函数
         filePut(fileName)
-
-
-# 创建发送图片按钮
-pBut = tkinter.Button(root, text='Image', command=picture)
-pBut.place(x=65, y=320, width=60, height=30)
 
 
 # 截屏函数如下所示
@@ -385,10 +489,6 @@ def buttonCaptureClick():
     os.remove(filename)
 
 
-# 创建截屏按钮
-sBut = tkinter.Button(root, text='Capture', command=buttonCaptureClick)
-sBut.place(x=125, y=320, width=60, height=30)
-
 # 文件功能代码部分
 # 将在文件功能窗口用到的组件名都列出来, 方便重新打开时会对面板进行更新
 list2 = ''  # 列表框
@@ -412,34 +512,57 @@ def fileClient():
 
     # 将接收到的目录文件列表打印出来(dir), 显示在列表框中, 在pwd函数中调用
     def recvList(enter, lu):
-        s.send(enter.encode())
-        data = s.recv(4096)
-        data = json.loads(data.decode())
-        list2.delete(0, tkinter.END)  # 清空列表框
-        lu = lu.split('\\')
-        if len(lu) != 1:
-            list2.insert(tkinter.END, 'Return to the previous dir')
-            list2.itemconfig(0, fg='green')
-        for i in range(len(data)):
-            list2.insert(tkinter.END, ('' + data[i]))
-            if '.' not in data[i]:
-                list2.itemconfig(tkinter.END, fg='orange')
-            else:
-                list2.itemconfig(tkinter.END, fg='blue')
+        try:
+            s.settimeout(5.0)  # 设置5秒超时
+            s.send(enter.encode())
+            data = s.recv(4096)
+            data = json.loads(data.decode())
+            list2.delete(0, tkinter.END)  # 清空列表框
+            lu = lu.split('\\')
+            if len(lu) != 1:
+                list2.insert(tkinter.END, 'Return to the previous dir')
+                list2.itemconfig(0, fg='green')
+            for i in range(len(data)):
+                list2.insert(tkinter.END, ('' + data[i]))
+                if '.' not in data[i]:
+                    list2.itemconfig(tkinter.END, fg='orange')
+                else:
+                    list2.itemconfig(tkinter.END, fg='blue')
+        except Exception as e:
+            print(f"Error in recvList: {e}")
+            list2.delete(0, tkinter.END)
+            list2.insert(tkinter.END, "Error loading directory")
+        finally:
+            s.settimeout(None)  # 恢复默认设置
 
     # 创建标签显示服务端工作目录
     def lab():
         global label
-        data = s.recv(1024)  # 接收目录
-        lu = data.decode()
         try:
-            label.destroy()
-            label = tkinter.Label(root, text=lu)
-            label.place(x=580, y=0, )
-        except:
-            label = tkinter.Label(root, text=lu)
-            label.place(x=580, y=0, )
-        recvList('dir', lu)
+            s.settimeout(5.0)  # 设置5秒超时
+            data = s.recv(1024)  # 接收目录
+            lu = data.decode()
+            try:
+                label.destroy()
+                label = tkinter.Label(root, text=lu)
+                label.place(x=580, y=0, )
+            except:
+                label = tkinter.Label(root, text=lu)
+                label.place(x=580, y=0, )
+            recvList('dir', lu)
+        except socket.timeout:
+            print("Timeout waiting for directory information")
+            try:
+                label.destroy()
+                label = tkinter.Label(root, text="Connection timeout")
+                label.place(x=580, y=0, )
+            except:
+                label = tkinter.Label(root, text="Connection timeout")
+                label.place(x=580, y=0, )
+        except Exception as e:
+            print(f"Error in lab: {e}")
+        finally:
+            s.settimeout(None)  # 恢复默认设置
 
     # 进入指定目录(cd)
     def cd(message):
@@ -459,33 +582,104 @@ def fileClient():
         fileName = tkinter.filedialog.asksaveasfilename(title='Save file to', initialfile=name)
         # 如果文件名非空才进行下载
         if fileName:
-            s.send(message.encode())
-            with open(fileName, 'wb') as f:
-                while True:
-                    data = s.recv(1024)
-                    if data == 'EOF'.encode():
+            # 创建进度窗口
+            progress_window = tkinter.Toplevel(root)
+            progress_window.title('Downloading')
+            progress_window.geometry('300x100')
+            
+            # 添加进度标签
+            progress_label = tkinter.Label(progress_window, text=f"Downloading {name}...")
+            progress_label.pack(pady=10)
+            
+            # 添加取消按钮
+            cancel_download = False
+            
+            def on_cancel():
+                nonlocal cancel_download
+                cancel_download = True
+                progress_window.destroy()
+                
+            cancel_button = tkinter.Button(progress_window, text="Cancel", command=on_cancel)
+            cancel_button.pack(pady=10)
+            
+            # 开始下载文件的线程
+            def download_thread():
+                try:
+                    # 设置超时
+                    s.settimeout(10.0)
+                    s.send(message.encode())
+                    
+                    with open(fileName, 'wb') as f:
+                        while True and not cancel_download:
+                            try:
+                                data = s.recv(1024)
+                                if data == 'EOF'.encode():
+                                    break
+                                if not data:  # 连接中断
+                                    raise Exception("Connection lost")
+                                f.write(data)
+                                # 更新进度标签
+                                progress_window.update_idletasks()
+                            except socket.timeout:
+                                if not cancel_download:
+                                    tkinter.messagebox.showerror(title='Error', 
+                                                              message='Download timed out!')
+                                break
+                    
+                    # 完成下载，关闭进度窗口
+                    if not cancel_download:
+                        progress_window.destroy()
                         tkinter.messagebox.showinfo(title='Message',
-                                                    message='Download completed!')
-                        break
-                    f.write(data)
+                                                  message='Download completed!')
+                except Exception as e:
+                    if not cancel_download:
+                        progress_window.destroy()
+                        tkinter.messagebox.showerror(title='Error',
+                                                  message=f'Download failed: {str(e)}')
+                finally:
+                    s.settimeout(None)  # 恢复默认超时设置
+                    
+            # 启动下载线程
+            download_thread = threading.Thread(target=download_thread)
+            download_thread.daemon = True
+            download_thread.start()
+            
+            # 等待进度窗口关闭
+            root.wait_window(progress_window)
 
     # 创建用于绑定在列表框上的函数
     def run(*args):
-        indexs = list2.curselection()
-        index = indexs[0]
-        content = list2.get(index)
-        # 如果有一个 . 则为文件
-        if '.' in content:
-            content = 'get ' + content
-            get(content)
-            cd('cd same')
-        elif content == 'Return to the previous dir':
-            content = 'cd ..'
-            cd(content)
-        else:
-            content = 'cd ' + content
-            cd(content)
-        lab()  # 刷新显示页面
+        try:
+            indexs = list2.curselection()
+            index = indexs[0]
+            content = list2.get(index)
+            
+            # 创建处理操作的线程函数
+            def process_action():
+                try:
+                    # 如果有一个 . 则为文件
+                    if '.' in content:
+                        content_command = 'get ' + content
+                        get(content_command)
+                        cd('cd same')
+                    elif content == 'Return to the previous dir':
+                        content_command = 'cd ..'
+                        cd(content_command)
+                    else:
+                        content_command = 'cd ' + content
+                        cd(content_command)
+                    lab()  # 刷新显示页面
+                except Exception as e:
+                    print(f"Error in process_action: {e}")
+            
+            # 使用线程执行可能阻塞的操作
+            action_thread = threading.Thread(target=process_action)
+            action_thread.daemon = True
+            action_thread.start()
+            
+        except Exception as e:
+            print(f"Error in run: {e}")
+            # 可能没有选中项目等异常情况
 
     # 在列表框上设置绑定事件
     list2.bind('<ButtonRelease-1>', run)
@@ -509,8 +703,24 @@ def fileClient():
                 s.send('EOF'.encode())
                 tkinter.messagebox.showinfo(title='Message',
                                             message='Upload completed!')
-        cd('cd same')
-        lab()  # 上传成功后刷新显示页面
+            
+            # 使用线程来刷新文件列表，避免阻塞主线程
+            def refresh_filelist():
+                try:
+                    # 设置超时，防止长时间阻塞
+                    s.settimeout(5.0)
+                    cd('cd same')
+                    lab()  # 上传成功后刷新显示页面
+                except Exception as e:
+                    print(f"Error refreshing file list: {e}")
+                finally:
+                    # 恢复默认超时设置
+                    s.settimeout(None)
+                
+            # 创建并启动线程
+            refresh_thread = threading.Thread(target=refresh_filelist)
+            refresh_thread.daemon = True  # 设为守护线程，随主线程退出
+            refresh_thread.start()
 
     # 创建上传按钮, 并绑定上传文件功能
     upload = tkinter.Button(root, text='Upload file', command=put)
@@ -765,10 +975,6 @@ def video_connect_option():
     Start.place(x=80, y=400, width=60, height=35)
 
 
-vbutton = tkinter.Button(root, text="Video", command=video_connect_option)
-vbutton.place(x=245, y=320, width=60, height=30)
-
-
 # 私聊功能
 def private(*args):
     global chat
@@ -868,5 +1074,14 @@ def recv():
 r = threading.Thread(target=recv)
 r.start()  # 开始线程接收信息
 
+# 将Enter键绑定到登录功能
+root.bind('<Return>', process_login_register)  # 回车绑定登录功能
+loginButton = tkinter.Button(root, text='Login', command=process_login_register)
+loginButton.place(x=100, y=140, width=70, height=30)
+
+# 主循环
 root.mainloop()
-s.close()  # 关闭图形界面后关闭TCP连接
+
+# 程序结束时关闭socket连接
+if 's' in globals():
+    s.close()

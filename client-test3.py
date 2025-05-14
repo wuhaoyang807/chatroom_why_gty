@@ -9,6 +9,7 @@ import requests
 from tkinter import filedialog
 import vachat
 import os
+import hashlib
 from time import sleep
 from PIL import ImageGrab
 from netifaces import interfaces, ifaddresses, AF_INET6
@@ -16,85 +17,266 @@ from netifaces import interfaces, ifaddresses, AF_INET6
 IP = ''
 PORT = ''
 user = ''
+password = ''
 listbox1 = ''  # 用于显示在线用户的列表框
 ii = 0  # 用于判断是开还是关闭列表框
 users = []  # 在线用户列表
 chat = '------Group chat-------'  # 聊天对象, 默认为群聊
+is_register = False  # 标识是注册还是登录
+
+# 表情功能初始化
+b1 = ''
+b2 = ''
+b3 = ''
+b4 = ''
+p1 = None
+p2 = None
+p3 = None
+p4 = None
+dic = {}
+ee = 0
+
+# 视频聊天初始化
+IsOpen = False  # 判断视频/音频的服务器是否已打开
+Resolution = 0  # 图像传输的分辨率 0-4依次递减
+Version = 4  # 传输协议版本 IPv4/IPv6
+ShowMe = True  # 视频聊天时是否打开本地摄像头
+AudioOpen = True  # 是否打开音频聊天
+
 # 登陆窗口
-root1 = tkinter.Tk()
-root1.title('Log in')
-root1['height'] = 110
-root1['width'] = 270
-root1.resizable(0, 0)  # 限制窗口大小
+root = tkinter.Tk()
+root.title('Log in')
+root['height'] = 180
+root['width'] = 270
+root.resizable(0, 0)  # 限制窗口大小
 
 IP1 = tkinter.StringVar()
 IP1.set('127.0.0.1:50007')  # 默认显示的ip和端口
 User = tkinter.StringVar()
 User.set('')
+Password = tkinter.StringVar()
+Password.set('')
+LoginMode = tkinter.BooleanVar()
+LoginMode.set(True)  # True for login, False for register
+
+# 初始化聊天相关变量
+chat = '------Group chat-------'  # 聊天对象, 默认为群聊
 
 # 服务器标签
-labelIP = tkinter.Label(root1, text='Server address')
+labelIP = tkinter.Label(root, text='Server address')
 labelIP.place(x=20, y=10, width=100, height=20)
 
-entryIP = tkinter.Entry(root1, width=80, textvariable=IP1)
+entryIP = tkinter.Entry(root, width=80, textvariable=IP1)
 entryIP.place(x=120, y=10, width=130, height=20)
 
 # 用户名标签
-labelUser = tkinter.Label(root1, text='Username')
+labelUser = tkinter.Label(root, text='Username')
 labelUser.place(x=30, y=40, width=80, height=20)
 
-entryUser = tkinter.Entry(root1, width=80, textvariable=User)
+entryUser = tkinter.Entry(root, width=80, textvariable=User)
 entryUser.place(x=120, y=40, width=130, height=20)
 
+# 密码标签
+labelPassword = tkinter.Label(root, text='Password')
+labelPassword.place(x=30, y=70, width=80, height=20)
 
-# 登录按钮
-def login(*args):
-    global IP, PORT, user
-    IP, PORT = entryIP.get().split(':')  # 获取IP和端口号
-    PORT = int(PORT)                     # 端口号需要为int类型
-    user = entryUser.get()
-    if not user:
-        tkinter.messagebox.showerror('Name type error', message='Username Empty!')
+entryPassword = tkinter.Entry(root, width=80, textvariable=Password, show='*')
+entryPassword.place(x=120, y=70, width=130, height=20)
+
+
+# 切换登录/注册模式
+def toggle_mode():
+    if LoginMode.get():
+        LoginMode.set(False)
+        modeButton.config(text='Switch to Login')
+        loginButton.config(text='Register')
+        root.title('Register')
     else:
-        root1.destroy()                  # 关闭窗口
+        LoginMode.set(True)
+        modeButton.config(text='Switch to Register')
+        loginButton.config(text='Login')
+        root.title('Log in')
 
 
-root1.bind('<Return>', login)            # 回车绑定登录功能
-but = tkinter.Button(root1, text='Log in', command=login)
-but.place(x=100, y=70, width=70, height=30)
+modeButton = tkinter.Button(root, text='Switch to Register', command=toggle_mode)
+modeButton.place(x=80, y=100, width=120, height=30)
 
-root1.mainloop()
 
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect((IP, PORT))
-if user:
-    s.send(user.encode())  # 发送用户名
-else:
-    s.send('no'.encode())  # 没有输入用户名则标记no
+# 登录和注册按钮
+def process_login_register(*args):
+    global IP, PORT, user, password, is_register
+    IP, PORT = entryIP.get().split(':')  # 获取IP和端口号
+    PORT = int(PORT)  # 端口号需要为int类型
+    user = entryUser.get()
+    password = entryPassword.get()
 
-# 如果没有用户名则将ip和端口号设置为用户名
-addr = s.getsockname()  # 获取客户端ip和端口号
-addr = addr[0] + ':' + str(addr[1])
-if user == '':
-    user = addr
+    if not user:
+        tkinter.messagebox.showerror('Error', message='Username cannot be empty!')
+        return
 
-# 聊天窗口
-# 创建图形界面
-root = tkinter.Tk()
-root.title(user)  # 窗口命名为用户名
-root['height'] = 400
-root['width'] = 580
-root.resizable(0, 0)  # 限制窗口大小
+    if not password:
+        tkinter.messagebox.showerror('Error', message='Password cannot be empty!')
+        return
 
-# 创建多行文本框
-listbox = ScrolledText(root)
-listbox.place(x=5, y=0, width=570, height=320)
-# 文本框使用的字体颜色
-listbox.tag_config('red', foreground='red')
-listbox.tag_config('blue', foreground='blue')
-listbox.tag_config('green', foreground='green')
-listbox.tag_config('pink', foreground='pink')
-listbox.insert(tkinter.END, 'Welcome to the chat room!', 'blue')
+    # 设置是登录还是注册模式
+    is_register = not LoginMode.get()
+
+    try:
+        # 登录或注册验证
+        global s
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((IP, PORT))
+
+        # 发送用户名和密码，以及是登录还是注册
+        auth_data = {
+            "username": user,
+            "password": hashlib.sha256(password.encode()).hexdigest(),
+            "is_register": is_register
+        }
+        s.send(json.dumps(auth_data).encode())
+
+        # 接收服务器验证结果
+        auth_result = s.recv(1024).decode()
+        if auth_result == "AUTH_FAILED":
+            tkinter.messagebox.showerror('Authentication Failed', message='Incorrect password!')
+            return
+        elif auth_result == "REGISTER_SUCCESS":
+            tkinter.messagebox.showinfo('Success', message='Registration successful! You are now logged in.')
+        elif auth_result == "LOGIN_SUCCESS":
+            tkinter.messagebox.showinfo('Success', message='Login successful! Welcome back.')
+        elif auth_result == "USER_EXISTS":
+            tkinter.messagebox.showerror('Registration Failed',
+                                         message='User already exists! Please try a different username.')
+            return
+        elif auth_result == "USER_NOT_FOUND":
+            tkinter.messagebox.showerror('Login Failed',
+                                         message='User not found! Please check your username or register.')
+            return
+
+        # 如果没有用户名则将ip和端口号设置为用户名
+        addr = s.getsockname()  # 获取客户端ip和端口号
+        addr = addr[0] + ':' + str(addr[1])
+        if user == '':
+            user = addr
+
+        # 登录成功，转换为聊天窗口
+        # 清除登录窗口的所有控件
+        for widget in root.winfo_children():
+            widget.destroy()
+
+        # 设置聊天窗口
+        setup_chat_window()
+
+    except Exception as e:
+        tkinter.messagebox.showerror('Connection Error', message=f'Failed to connect to server: {str(e)}')
+        return
+
+
+def setup_chat_window():
+    global listbox, chat, users
+    # 确保聊天对象已初始化
+    chat = '------Group chat-------'  # 聊天对象, 默认为群聊
+    users = []  # 重置在线用户列表
+
+    # 设置窗口属性
+    root.title(user)  # 窗口命名为用户名
+    root['height'] = 400
+    root['width'] = 580
+    root.resizable(0, 0)  # 限制窗口大小
+
+    # 创建多行文本框
+    listbox = ScrolledText(root)
+    listbox.place(x=5, y=0, width=570, height=320)
+    # 文本框使用的字体颜色
+    listbox.tag_config('red', foreground='red')
+    listbox.tag_config('blue', foreground='blue')
+    listbox.tag_config('green', foreground='green')
+    listbox.tag_config('pink', foreground='pink')
+    listbox.insert(tkinter.END, 'Welcome to the chat room!', 'blue')
+
+    # 这里添加所有聊天窗口的UI元素和功能
+    setup_chat_ui()
+
+    # 确保窗口处于活动状态
+    root.update()
+
+    # 开始接收消息的线程
+    r = threading.Thread(target=recv)
+    r.start()
+
+
+def setup_chat_ui():
+    global eBut, pBut, sBut, fBut, button1, entry, a, button, vbutton, listbox1, ii
+    global p1, p2, p3, p4, dic, b1, b2, b3, b4, ee
+
+    # 表情功能代码部分
+    b1 = ''
+    b2 = ''
+    b3 = ''
+    b4 = ''
+
+    # 将图片打开存入变量中
+    try:
+        p1 = tkinter.PhotoImage(file='./emoji/facepalm.png')
+        p2 = tkinter.PhotoImage(file='./emoji/smirk.png')
+        p3 = tkinter.PhotoImage(file='./emoji/concerned.png')
+        p4 = tkinter.PhotoImage(file='./emoji/smart.png')
+        # 用字典将标记与表情图片一一对应, 用于后面接收标记判断表情贴图
+        dic = {'aa**': p1, 'bb**': p2, 'cc**': p3, 'dd**': p4}
+    except Exception as e:
+        print(f"Error loading emoji images: {e}")
+        # 创建空图片以避免错误
+        p1 = tkinter.PhotoImage(width=1, height=1)
+        p2 = tkinter.PhotoImage(width=1, height=1)
+        p3 = tkinter.PhotoImage(width=1, height=1)
+        p4 = tkinter.PhotoImage(width=1, height=1)
+        dic = {'aa**': p1, 'bb**': p2, 'cc**': p3, 'dd**': p4}
+
+    ee = 0  # 判断表情面板开关的标志
+
+    # 创建表情按钮
+    eBut = tkinter.Button(root, text='emoji', command=express)
+    eBut.place(x=5, y=320, width=60, height=30)
+
+    # 创建发送图片按钮
+    pBut = tkinter.Button(root, text='Image', command=picture)
+    pBut.place(x=65, y=320, width=60, height=30)
+
+    # 创建截屏按钮
+    sBut = tkinter.Button(root, text='Capture', command=buttonCaptureClick)
+    sBut.place(x=125, y=320, width=60, height=30)
+
+    # 创建文件按钮
+    fBut = tkinter.Button(root, text='File', command=fileClient)
+    fBut.place(x=185, y=320, width=60, height=30)
+
+    # 创建多行文本框, 显示在线用户
+    listbox1 = tkinter.Listbox(root)
+    listbox1.place(x=445, y=0, width=130, height=320)
+
+    # 查看在线用户按钮
+    ii = 0
+    button1 = tkinter.Button(root, text='Users online', command=users)
+    button1.place(x=485, y=320, width=90, height=30)
+
+    # 创建输入文本框和关联变量
+    a = tkinter.StringVar()
+    a.set('')
+    entry = tkinter.Entry(root, width=120, textvariable=a)
+    entry.place(x=5, y=350, width=570, height=40)
+
+    # 创建发送按钮
+    button = tkinter.Button(root, text='Send', command=send)
+    button.place(x=515, y=353, width=60, height=30)
+    root.bind('<Return>', send)  # 绑定回车发送信息
+
+    # 视频聊天按钮
+    vbutton = tkinter.Button(root, text="Video", command=video_connect_option)
+    vbutton.place(x=245, y=320, width=60, height=30)
+
+    # 在显示用户列表框上设置绑定事件
+    listbox1.bind('<ButtonRelease-1>', private)
+
 
 # 表情功能代码部分
 # 四个按钮, 使用全局变量, 方便创建和销毁
@@ -103,12 +285,12 @@ b2 = ''
 b3 = ''
 b4 = ''
 # 将图片打开存入变量中
-p1 = tkinter.PhotoImage(file='./emoji/facepalm.png')
-p2 = tkinter.PhotoImage(file='./emoji/smirk.png')
-p3 = tkinter.PhotoImage(file='./emoji/concerned.png')
-p4 = tkinter.PhotoImage(file='./emoji/smart.png')
+p1 = None
+p2 = None
+p3 = None
+p4 = None
 # 用字典将标记与表情图片一一对应, 用于后面接收标记判断表情贴图
-dic = {'aa**': p1, 'bb**': p2, 'cc**': p3, 'dd**': p4}
+dic = {}
 ee = 0  # 判断表情面板开关的标志
 
 
@@ -166,11 +348,6 @@ def express():
         b2.destroy()
         b3.destroy()
         b4.destroy()
-
-
-# 创建表情按钮
-eBut = tkinter.Button(root, text='emoji', command=express)
-eBut.place(x=5, y=320, width=60, height=30)
 
 
 # 图片功能代码部分
@@ -232,11 +409,6 @@ def picture():
     if fileName:
         # 调用发送图片函数
         filePut(fileName)
-
-
-# 创建发送图片按钮
-pBut = tkinter.Button(root, text='Image', command=picture)
-pBut.place(x=65, y=320, width=60, height=30)
 
 
 # 截屏函数如下所示
@@ -324,10 +496,6 @@ def buttonCaptureClick():
     root.state('normal')
     os.remove(filename)
 
-
-# 创建截屏按钮
-sBut = tkinter.Button(root, text='Capture', command=buttonCaptureClick)
-sBut.place(x=125, y=320, width=60, height=30)
 
 # 文件功能代码部分
 # 将在文件功能窗口用到的组件名都列出来, 方便重新打开时会对面板进行更新
@@ -558,10 +726,10 @@ button.place(x=515, y=353, width=60, height=30)
 root.bind('<Return>', send)  # 绑定回车发送信息
 
 # 视频聊天部分
-IsOpen = False    # 判断视频/音频的服务器是否已打开
-Resolution = 0    # 图像传输的分辨率 0-4依次递减
-Version = 4       # 传输协议版本 IPv4/IPv6
-ShowMe = True     # 视频聊天时是否打开本地摄像头
+IsOpen = False  # 判断视频/音频的服务器是否已打开
+Resolution = 0  # 图像传输的分辨率 0-4依次递减
+Version = 4  # 传输协议版本 IPv4/IPv6
+ShowMe = True  # 视频聊天时是否打开本地摄像头
 AudioOpen = True  # 是否打开音频聊天
 
 
@@ -705,10 +873,6 @@ def video_connect_option():
     Start.place(x=80, y=400, width=60, height=35)
 
 
-vbutton = tkinter.Button(root, text="Video", command=video_connect_option)
-vbutton.place(x=245, y=320, width=60, height=30)
-
-
 # 私聊功能
 def private(*args):
     global chat
@@ -808,5 +972,14 @@ def recv():
 r = threading.Thread(target=recv)
 r.start()  # 开始线程接收信息
 
+# 将Enter键绑定到登录功能
+root.bind('<Return>', process_login_register)  # 回车绑定登录功能
+loginButton = tkinter.Button(root, text='Login', command=process_login_register)
+loginButton.place(x=100, y=140, width=70, height=30)
+
+# 主循环
 root.mainloop()
-s.close()  # 关闭图形界面后关闭TCP连接
+
+# 程序结束时关闭socket连接
+if 's' in globals():
+    s.close()
